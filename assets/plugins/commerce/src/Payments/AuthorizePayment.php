@@ -10,6 +10,10 @@ use Commerce\Commerce;
 class AuthorizePayment extends Payment
 {
 
+    private $codes = [
+        'USD', 'CAD', 'GBP', 'DKK', 'NOK', 'PLN', 'SEK', 'EUR', 'AUD', 'NZD'
+    ];
+
 
     /**
      * @var $commerce Commerce
@@ -35,11 +39,28 @@ class AuthorizePayment extends Payment
     public function getPaymentLink()
     {
 
-        $processor = $this->modx->commerce->loadProcessor();
-        $order = $processor->getOrder();
 
-        $amount = floatval($order['amount']);
-        $payment = $this->createPayment($order['id'], $amount);
+        $processor = $this->modx->commerce->loadProcessor();
+        $order     = $processor->getOrder();
+        $currency  = ci()->currency->getCurrency($order['currency']);
+
+        if(!in_array($order['currency'],$this->codes) && empty($this->getSetting('convert_to'))){
+            return  false;
+        }
+
+        $payment  = $this->createPayment($order['id'], $order['amount']);
+
+
+        if(in_array($order['currency'],$this->codes)){
+            $payment['meta']['pay_amount'] = $order['amount'];
+            $payment['meta']['pay_currency'] = $order['currency'];
+        }
+        else{
+            $payment['meta']['pay_amount'] = $this->commerce->currency->convert($order['amount'],$order['currency'],$this->getSetting('convert_to'));
+            $payment['meta']['pay_currency'] = $this->getSetting('convert_to');
+        }
+
+        $this->orderProcessor->savePayment($payment);
 
 
         return $this->modx->makeUrl($this->getSetting('paymentPageId')) . '?' . http_build_query([
@@ -92,15 +113,11 @@ class AuthorizePayment extends Payment
 
     }
 
-    private function authorizeTransaction()
-    {
-
-    }
 
     private function chargeMoney($payment, $request)
     {
 
-        $commerceOrder = $this->orderProcessor->loadOrder($payment['order_id']);
+
 
         /* Create a merchantAuthenticationType object with authentication details
            retrieved from the constants file */
@@ -112,9 +129,10 @@ class AuthorizePayment extends Payment
 
         // Create the payment data for a credit card
         $creditCard = new AnetAPI\CreditCardType();
-        $creditCard->setCardNumber($request['number']);
-        $creditCard->setExpirationDate($request['expiration']);
-        $creditCard->setCardCode($request['cvv']);
+        $creditCard->setCardNumber(preg_replace('~[^0-9]~','',$request['number']));
+        $creditCard->setExpirationDate(preg_replace('~[^0-9-]~','',$request['expiration']));
+        $creditCard->setCardCode(intval($request['cvv']));
+
 
         // Add the payment data to a paymentType object
         $paymentOne = new AnetAPI\PaymentType();
@@ -128,8 +146,8 @@ class AuthorizePayment extends Payment
         // Create a TransactionRequestType object and add the previous objects to it
         $transactionRequestType = new AnetAPI\TransactionRequestType();
         $transactionRequestType->setTransactionType("authCaptureTransaction");
-        $transactionRequestType->setAmount(floatval($commerceOrder['amount']));
-        $transactionRequestType->setCurrencyCode($commerceOrder['currency']);
+        $transactionRequestType->setAmount(floatval($payment['meta']['pay_amount']));
+        $transactionRequestType->setCurrencyCode($payment['meta']['pay_currency']);
         $transactionRequestType->setOrder($order);
         $transactionRequestType->setPayment($paymentOne);
 
@@ -144,18 +162,16 @@ class AuthorizePayment extends Payment
         $controller = new AnetController\CreateTransactionController($request);
         $response = $controller->executeWithApiResponse(\net\authorize\api\constants\ANetEnvironment::SANDBOX);
 
-        echo '<pre>';
 
         if ($response === null) {
             $this->log(3, "No response returned");
+            throw new \Exception($this->lang['authorize.transaction_error']);
         }
 
 
         if($response->getMessages()->getResultCode() !=="Ok"){
 
             $tresponse = $response->getTransactionResponse();
-
-            $errors = [];
 
             if ($tresponse != null && $tresponse->getErrors() != null) {
                 $errors = $tresponse->getErrors();
@@ -184,7 +200,6 @@ class AuthorizePayment extends Payment
 
         }
 
-        var_dump($tresponse);die();
         $this->log(1,'Response success: '.print_r($tresponse,true));
 
 
@@ -219,5 +234,9 @@ class AuthorizePayment extends Payment
 
     }
 
+    public function getRequestPaymentHash()
+    {
+        return isset($_GET['payment_hash'])?$_GET['payment_hash']:'';
+    }
 
 }
