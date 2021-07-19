@@ -7,6 +7,7 @@ return [
     'authorize.error_enter_expiration' => 'Enter expiration',
     'authorize.error_enter_cvv' => 'Enter cvv',
 
+    'authorize.transaction_error_try_again' => 'Transaction error, try again',
     'authorize.transaction_error' => 'Transaction error',
     'authorize.transaction_ok_other_problem' => 'Transaction success, but something wrong, write to the administrator',
 

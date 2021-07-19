@@ -23,6 +23,10 @@ class AuthorizePayment extends Payment
      * @var \Commerce\Processors\OrdersProcessor
      */
     private $orderProcessor;
+    /**
+     * @var \DLTemplate
+     */
+    private $render;
 
     public function __construct($modx, array $params = [])
     {
@@ -32,36 +36,19 @@ class AuthorizePayment extends Payment
         $this->orderProcessor = $this->commerce->loadProcessor();
 
         $this->lang = $this->commerce->getUserLanguage('authorize');
+        $this->render = \DLTemplate::getInstance($modx);
 
 
     }
 
     public function getPaymentLink()
     {
+        $order = $this->orderProcessor->getOrder();;
+        $payment = $this->preparePayment($order['id']);
 
-
-        $processor = $this->modx->commerce->loadProcessor();
-        $order     = $processor->getOrder();
-        $currency  = ci()->currency->getCurrency($order['currency']);
-
-        if(!in_array($order['currency'],$this->codes) && empty($this->getSetting('convert_to'))){
-            return  false;
+        if($this->getSetting('pay_on_order') == 1){
+            return ;
         }
-
-        $payment  = $this->createPayment($order['id'], $order['amount']);
-
-
-        if(in_array($order['currency'],$this->codes)){
-            $payment['meta']['pay_amount'] = $order['amount'];
-            $payment['meta']['pay_currency'] = $order['currency'];
-        }
-        else{
-            $payment['meta']['pay_amount'] = $this->commerce->currency->convert($order['amount'],$order['currency'],$this->getSetting('convert_to'));
-            $payment['meta']['pay_currency'] = $this->getSetting('convert_to');
-        }
-
-        $this->orderProcessor->savePayment($payment);
-
 
         return $this->modx->makeUrl($this->getSetting('paymentPageId')) . '?' . http_build_query([
                 'payment_hash' => $payment['hash'],
@@ -69,34 +56,58 @@ class AuthorizePayment extends Payment
     }
 
 
-    public function charge($paymentHash, $request)
+    public function getMarkup()
     {
-        $payment = $this->getPayment();
+        if ($this->orderProcessor->getCurrentPayment() != 'authorize' || $this->getSetting('pay_on_order') == 0) {
+            return;
+        }
+        $tpl = $this->getSetting('markup_tpl', '@CODE:' . file_get_contents(MODX_BASE_PATH . 'assets/plugins/commercePaymentAuthorize/paymentMarkupTemplate.tpl'));
+        return $this->render->parseChunk($tpl);
+    }
+
+
+
+
+    public function preparePayment($orderId)
+    {
+        $this->orderProcessor->loadOrder($orderId);
+        $order = $this->orderProcessor->getOrder();
+
+        if (!in_array($order['currency'], $this->codes) && empty($this->getSetting('convert_to'))) {
+            return false;
+        }
+
+        $payment = $this->createPayment($order['id'], $order['amount']);
+
+        if (in_array($order['currency'], $this->codes)) {
+            $payment['meta']['pay_amount'] = $order['amount'];
+            $payment['meta']['pay_currency'] = $order['currency'];
+        } else {
+            $payment['meta']['pay_amount'] = $this->commerce->currency->convert($order['amount'], $order['currency'], $this->getSetting('convert_to'));
+            $payment['meta']['pay_currency'] = $this->getSetting('convert_to');
+        }
+
+        $this->orderProcessor->savePayment($payment);
+
+        return $payment;
+    }
+
+
+
+    public function charge($payment, $request)
+    {
         $this->validatePayment($payment);
         $this->validateRequest($request);
-
-        $this->chargeMoney($payment,$request);
+        $this->chargeMoney($payment, $request);
 
         try {
-            $this->orderProcessor->processPayment($payment['id'],floatval($payment['amount']));
-        }
-        catch (\Exception $e){
-            $this->log(3,'processPaymentError: '.print_r($e->getMessage(),true));
+            $this->orderProcessor->processPayment($payment['id'], floatval($payment['amount']));
+        } catch (\Exception $e) {
+            $this->log(3, 'processPaymentError: ' . print_r($e->getMessage(), true));
             throw new \Exception($this->lang['authorize.transaction_ok_other_problem']);
         }
     }
 
-    private function getPayment()
-    {
-        /** @var \Commerce\Processors\OrdersProcessor $orderProcessor */
-        $payment = $this->orderProcessor->loadPaymentByHash($_GET['payment_hash']);
-
-
-        if (empty($payment)) {
-            throw new \Exception($this->lang['authorize.payment_not_found']);
-        }
-        return $payment;
-    }
 
     private function validateRequest($request)
     {
@@ -109,14 +120,11 @@ class AuthorizePayment extends Payment
         if (empty($request['cvv'])) {
             throw new \Exception($this->lang['authorize.error_enter_cvv']);
         }
-
-
     }
 
 
     private function chargeMoney($payment, $request)
     {
-
 
 
         /* Create a merchantAuthenticationType object with authentication details
@@ -126,11 +134,10 @@ class AuthorizePayment extends Payment
         $merchantAuthentication->setTransactionKey($this->getSetting('transaction_key'));
 
 
-
         // Create the payment data for a credit card
         $creditCard = new AnetAPI\CreditCardType();
-        $creditCard->setCardNumber(preg_replace('~[^0-9]~','',$request['number']));
-        $creditCard->setExpirationDate(preg_replace('~[^0-9-]~','',$request['expiration']));
+        $creditCard->setCardNumber(preg_replace('~[^0-9]~', '', $request['number']));
+        $creditCard->setExpirationDate(preg_replace('~[^0-9-]~', '', $request['expiration']));
         $creditCard->setCardCode(intval($request['cvv']));
 
 
@@ -169,7 +176,7 @@ class AuthorizePayment extends Payment
         }
 
 
-        if($response->getMessages()->getResultCode() !=="Ok"){
+        if ($response->getMessages()->getResultCode() !== "Ok") {
 
             $tresponse = $response->getTransactionResponse();
 
@@ -179,7 +186,7 @@ class AuthorizePayment extends Payment
                 $errors = $response->getMessages()->getMessage()[0];
             }
 
-            $this->log(3,'Errors: '.print_r($errors,true));
+            $this->log(3, 'Errors: ' . print_r($errors, true));
             throw new \Exception($this->lang['authorize.transaction_error']);
         }
 
@@ -189,29 +196,27 @@ class AuthorizePayment extends Payment
         $tresponse = $response->getTransactionResponse();
 
 
-        if($tresponse == null || $tresponse->getMessages() == null){
+        if ($tresponse == null || $tresponse->getMessages() == null) {
 
             $errors = [];
-            if($tresponse->getErrors() != null){
+            if ($tresponse->getErrors() != null) {
                 $errors = $tresponse->getErrors()[0];
             }
-            $this->log(3,'Errors: '.print_r($errors,true));
+            $this->log(3, 'Errors: ' . print_r($errors, true));
             throw new \Exception($this->lang['authorize.transaction_error']);
 
         }
 
-        $this->log(1,'Response success: '.print_r($tresponse,true));
-
-
+        $this->log(1, 'Response success: ' . print_r($tresponse, true));
 
     }
 
     private function log($code, $message)
     {
-        if($this->getSetting('log_info_messages') == 0 && $code < 3){
+        if ($this->getSetting('log_info_messages') == 0 && $code < 3) {
             return true;
         }
-        $this->modx->logEvent(738,$code,$message,'AuthorizeNet');
+        $this->modx->logEvent(738, $code, $message, 'AuthorizeNet');
     }
 
     private function validatePayment($payment)
@@ -236,7 +241,7 @@ class AuthorizePayment extends Payment
 
     public function getRequestPaymentHash()
     {
-        return isset($_GET['payment_hash'])?$_GET['payment_hash']:'';
+        return isset($_GET['payment_hash']) ? $_GET['payment_hash'] : '';
     }
 
 }

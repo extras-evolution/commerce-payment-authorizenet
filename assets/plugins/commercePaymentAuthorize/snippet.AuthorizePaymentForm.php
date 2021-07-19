@@ -24,6 +24,10 @@ $lang = $commerce->getUserLanguage('authorize');
 
 $error = $success = '';
 
+if(isset($_GET['error'])){
+    $error = $lang['authorize.transaction_error_try_again'];
+}
+
 $request = $_POST;
 
 if($request){
