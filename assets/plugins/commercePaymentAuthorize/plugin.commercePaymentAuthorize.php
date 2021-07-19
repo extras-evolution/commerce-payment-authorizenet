@@ -53,17 +53,20 @@ switch ($modx->event->name) {
         try {
 
             $authorizePayment->charge($payment, $request);
-            $FL->config->setConfig(['redirectTo' => $modx->makeUrl($commerceConfig['payment_success_page_id'])]);
-
+            $redirect = $modx->makeUrl($commerceConfig['payment_success_page_id']);
 
         } catch (Exception $e) {
 
-            $FL->config->setConfig(['redirectTo' => $modx->makeUrl($params['paymentPageId']) . '?' . http_build_query([
+            $redirect =  $modx->makeUrl($params['paymentPageId']) . '?' . http_build_query([
                     'payment_hash' => $payment['hash'],
                     'error' => 1
-                ])]);
+                ]);
         }
 
+        $FL->config->setConfig(['redirectTo' => [
+            'page'   => $redirect,
+            'header' => 'HTTP/1.1 303 See Other',
+        ]]);
         break;
 
     case 'OnManagerBeforeOrderRender':

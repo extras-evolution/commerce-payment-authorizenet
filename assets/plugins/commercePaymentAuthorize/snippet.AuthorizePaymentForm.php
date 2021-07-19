@@ -17,6 +17,8 @@ $paymentHash = $_GET['payment_hash'];
 
 /** @var \Commerce\Commerce $commerce */
 $commerce = ci()->commerce;
+$orderProcessor = $commerce->loadProcessor();
+
 
 /** @var \Commerce\Payments\AuthorizePayment $paymentProcessor */
 $paymentProcessor = $commerce->getPayment('authorize')['processor'];
@@ -33,7 +35,8 @@ $request = $_POST;
 if($request){
 
     try {
-        $paymentProcessor->charge($paymentHash,$request);
+        $payment = $orderProcessor->loadPaymentByHash($paymentHash);
+        $paymentProcessor->charge($payment,$request);
         $modx->sendRedirect(MODX_BASE_URL . 'commerce/authorize/payment-success?paymentHash=' . $_REQUEST['payment_hash']);
     }
     catch (Exception $e){

@@ -6,10 +6,10 @@
             <input class="form-control" name="authorize-cc-number" placeholder="Credit card number" value="[+authorize-cc-number+]">
         </div>
         <div class="col-3">
-            <input class="form-control" name="authorize-cc-expiration" placeholder="Expiration" value="[+expiration+]">
+            <input class="form-control" name="authorize-cc-expiration" placeholder="Expiration" value="[+authorize-cc-expiration+]">
         </div>
         <div class="col-3">
-            <input class="form-control" name="authorize-cc-cvv" placeholder="CVV" value="[+cvv+]">
+            <input class="form-control" name="authorize-cc-cvv" placeholder="CVV" value="[+authorize-cc-cvv+]">
         </div>
     </div>
 
