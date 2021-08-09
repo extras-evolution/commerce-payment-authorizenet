@@ -14,7 +14,7 @@
     </div>
     `]]
 
-    <form action="?payment_hash=[+payment_hash+]" method="post">
+    <form action="[~[*id*]~]?payment_hash=[+payment_hash+]" method="post">
         <div class="row">
 
             <div class="mb-12">

@@ -12,6 +12,13 @@ $lang = $commerce->getUserLanguage('authorize');
 
 
 switch ($modx->event->name) {
+    case 'OnWebPageInit':
+
+
+        $modx->regClientScript('assets/plugins/commercePaymentAuthorize/jquery.inputmask.min.js');
+        $modx->regClientScript('assets/plugins/commercePaymentAuthorize/authorize.js');
+        break;
+
     case 'OnRegisterPayments':
     {
         $class = new \Commerce\Payments\AuthorizePayment($modx, $params);
@@ -57,14 +64,14 @@ switch ($modx->event->name) {
 
         } catch (Exception $e) {
 
-            $redirect =  $modx->makeUrl($params['paymentPageId']) . '?' . http_build_query([
+            $redirect = $modx->makeUrl($params['paymentPageId']) . '?' . http_build_query([
                     'payment_hash' => $payment['hash'],
                     'error' => 1
                 ]);
         }
 
         $FL->config->setConfig(['redirectTo' => [
-            'page'   => $redirect,
+            'page' => $redirect,
             'header' => 'HTTP/1.1 303 See Other',
         ]]);
         break;
